@@ -30,8 +30,6 @@ plugin "stegra" {
 }
 ```
 
-Note: This project is not hosted on GitHub and is not published in the TFLint plugin registry. Use the local installation flow above (`make install`) to build and use the plugin on your machine.
-
 ## Rules
 
 |Name|Description|Severity|Enabled|Link|
