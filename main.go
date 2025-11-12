@@ -1,0 +1,22 @@
+package main
+
+import (
+    "github.com/terraform-linters/tflint-plugin-sdk/plugin"
+    "github.com/terraform-linters/tflint-plugin-sdk/tflint"
+    "github.com/stegraab/tflint-ruleset-stegra/rules"
+)
+
+func main() {
+	plugin.Serve(&plugin.ServeOpts{
+		RuleSet: &tflint.BuiltinRuleSet{
+			Name:    "stegra",
+			Version: "0.0.1",
+			Rules: []tflint.Rule{
+				rules.NewStegraNewlineAfterKeywordsRule(),
+				rules.NewStegraDependsOnLastRule(),
+				rules.NewStegraProviderConfigurationLocationsRule(),
+				rules.NewStegraNoTypeInNameRule(),
+			},
+		},
+	})
+}
