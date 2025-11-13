@@ -1,13 +1,13 @@
 package rules
 
 import (
-    "fmt"
-    "path/filepath"
-    "strings"
+	"fmt"
+	"path/filepath"
+	"strings"
 
-    "github.com/hashicorp/hcl/v2"
-    "github.com/hashicorp/hcl/v2/hclsyntax"
-    "github.com/terraform-linters/tflint-plugin-sdk/tflint"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/terraform-linters/tflint-plugin-sdk/tflint"
 )
 
 // StegraNewlineAfterKeywordsRule enforces that selected attributes are followed
@@ -73,17 +73,17 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 		return err
 	}
 
-    for filename, file := range files {
-        if filepath.Ext(filename) != ".tf" {
-            continue
-        }
+	for filename, file := range files {
+		if filepath.Ext(filename) != ".tf" {
+			continue
+		}
 		body, ok := file.Body.(*hclsyntax.Body)
 		if !ok {
 			continue
 		}
 
-        content := file.Bytes
-        lines := strings.Split(string(content), "\n")
+		content := file.Bytes
+		lines := strings.Split(string(content), "\n")
 
 		for _, blk := range body.Blocks {
 			for name, attr := range blk.Body.Attributes {
@@ -139,5 +139,5 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 			}
 		}
 	}
-    return nil
+	return nil
 }
