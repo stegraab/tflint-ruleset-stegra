@@ -23,7 +23,7 @@ func (r *StegraKeywordsFirstRule) Severity() tflint.Severity {
 func (r *StegraKeywordsFirstRule) Link() string { return "" }
 
 type stegraKeywordsFirstConfig struct {
-	Keywords []string `hclext:"keywords,optional"`
+    Keywords []string `hclext:"keywords,optional"`
 }
 
 func (r *StegraKeywordsFirstRule) Check(runner tflint.Runner) error {
@@ -33,10 +33,16 @@ func (r *StegraKeywordsFirstRule) Check(runner tflint.Runner) error {
 	if len(cfg.Keywords) == 0 {
 		return fmt.Errorf("stegra_keywords_first: keywords option is required; set it in .tflint.hcl rule \"stegra_keywords_first\"")
 	}
-	target := map[string]struct{}{}
-	for _, k := range cfg.Keywords {
-		target[k] = struct{}{}
-	}
+    target := map[string]struct{}{}
+    for _, k := range cfg.Keywords {
+        target[k] = struct{}{}
+    }
+    // Desired order priority is the order of the `keywords` list
+    desired := cfg.Keywords
+    rank := make(map[string]int, len(desired))
+    for i, k := range desired {
+        rank[k] = i
+    }
 
 	path, err := runner.GetModulePath()
 	if err != nil {
@@ -70,10 +76,10 @@ func (r *StegraKeywordsFirstRule) Check(runner tflint.Runner) error {
 			}
 		}
 
-		for _, blk := range body.Blocks {
-			if blk.Type != "resource" && blk.Type != "data" {
-				continue
-			}
+        for _, blk := range body.Blocks {
+            if blk.Type != "resource" && blk.Type != "data" && blk.Type != "module" {
+                continue
+            }
 
 			// Collect items (attributes and child blocks) in source order
 			type item struct {
@@ -109,76 +115,110 @@ func (r *StegraKeywordsFirstRule) Check(runner tflint.Runner) error {
 
 			sort.Slice(items, func(i, j int) bool { return items[i].start.Byte < items[j].start.Byte })
 
-			// Count how many target attributes are present
-			present := 0
-			for _, it := range items {
-				if it.kind == "attr" {
-					if _, ok := target[it.name]; ok {
-						present++
-					}
-				}
-			}
-			if present == 0 {
-				continue
-			}
+            // Count how many target attributes are present
+            present := 0
+            for _, it := range items {
+                if it.kind == "attr" {
+                    if _, ok := target[it.name]; ok {
+                        present++
+                    }
+                }
+            }
+            if present == 0 {
+                continue
+            }
 
-			// Ensure the first 'present' items are all target attributes
-			// Pre-compute the index of the first target occurrence for insertion when none seen yet
-			firstTargetIdx := -1
-			for i, it := range items {
-				if it.kind == "attr" {
-					if _, ok := target[it.name]; ok {
-						firstTargetIdx = i
-						break
-					}
-				}
-			}
-
-			seenTargets := 0
-			lastTargetIdx := -1
-			for idx, it := range items {
-				if it.kind == "attr" {
-					if _, ok := target[it.name]; ok {
-						seenTargets++
-						lastTargetIdx = idx
-						continue
-					}
-				}
-				if seenTargets < present {
-					// Non-target item appears before all target attributes are listed
-					// Build a fix that moves this item after the last target attribute present
-					off := it // offending item
+            // Ensure the first 'present' items are all target attributes, and in desired order
+            seenTargets := 0
+            seenTargetIdxs := make([]int, 0, present)
+            // Compute the overall last target index in items for non-target relocation
+            lastTargetOverallIdx := -1
+            for i := range items {
+                if items[i].kind == "attr" {
+                    if _, ok := target[items[i].name]; ok {
+                        if i > lastTargetOverallIdx {
+                            lastTargetOverallIdx = i
+                        }
+                    }
+                }
+            }
+            for idx, it := range items {
+                if it.kind == "attr" {
+                    if _, ok := target[it.name]; ok {
+                        // Order check among targets using priority
+                        rk, has := rank[it.name]
+                        if !has {
+                            // If no explicit rank, treat as after all ranked items
+                            rk = len(desired)
+                        }
+                        // Find any prior seen target with higher rank (should come after this)
+                        misplaceAt := -1
+                        for _, prevIdx := range seenTargetIdxs {
+                            prevName := items[prevIdx].name
+                            pr, ok := rank[prevName]
+                            if !ok {
+                                pr = len(desired)
+                            }
+                            if pr > rk {
+                                misplaceAt = prevIdx
+                                break
+                            }
+                        }
+                        if misplaceAt >= 0 {
+                            // Move this target before the first previously-seen higher-ranked target
+                            insertBefore := items[misplaceAt].rng
+                            off := it
+                            moveText := raw[off.startByte:off.endByte]
+                            delRange := hcl.Range{Filename: filename, Start: hcl.Pos{Line: off.rng.Start.Line, Column: off.rng.Start.Column, Byte: off.startByte}, End: hcl.Pos{Line: off.rng.End.Line, Column: off.rng.End.Column, Byte: off.endByte}}
+                            if err := runner.EmitIssueWithFix(
+                                r,
+                                fmt.Sprintf("These attributes must appear first in this order: %s", strings.Join(desired, ", ")),
+                                it.rng,
+                                func(fixer tflint.Fixer) error {
+                                    if err := fixer.InsertTextBefore(insertBefore, moveText); err != nil {
+                                        return err
+                                    }
+                                    return fixer.ReplaceText(delRange, "")
+                                },
+                            ); err != nil {
+                                return err
+                            }
+                            break
+                        }
+                        seenTargets++
+                        seenTargetIdxs = append(seenTargetIdxs, idx)
+                        continue
+                    }
+                }
+                if seenTargets < present {
+                    // Non-target item appears before all target attributes are listed
+                    // Build a fix that moves this item after the last target attribute present
+                    off := it // offending item
 					// Compute insertion anchor: before the next item after last target, else before closing brace
-					var insertBefore hcl.Range
-					if lastTargetIdx >= 0 {
-						if lastTargetIdx+1 < len(items) {
-							insertBefore = items[lastTargetIdx+1].rng
-						} else {
-							insertBefore = hcl.Range{Filename: filename, Start: blk.CloseBraceRange.Start, End: blk.CloseBraceRange.End}
-						}
-					} else if firstTargetIdx >= 0 {
-						if firstTargetIdx+1 < len(items) {
-							insertBefore = items[firstTargetIdx+1].rng
-						} else {
-							insertBefore = hcl.Range{Filename: filename, Start: blk.CloseBraceRange.Start, End: blk.CloseBraceRange.End}
-						}
-					} else {
-						// Should not happen because 'present' > 0 guarantees a target; fallback to before '}'
-						insertBefore = hcl.Range{Filename: filename, Start: blk.CloseBraceRange.Start, End: blk.CloseBraceRange.End}
-					}
+                    var insertBefore hcl.Range
+                    if lastTargetOverallIdx >= 0 {
+                        if lastTargetOverallIdx+1 < len(items) {
+                            insertBefore = items[lastTargetOverallIdx+1].rng
+                        } else {
+                            insertBefore = hcl.Range{Filename: filename, Start: blk.CloseBraceRange.Start, End: blk.CloseBraceRange.End}
+                        }
+                    } else {
+                        // Should not happen because 'present' > 0 guarantees a target; fallback to before '}'
+                        insertBefore = hcl.Range{Filename: filename, Start: blk.CloseBraceRange.Start, End: blk.CloseBraceRange.End}
+                    }
 					// Define the slice we will move
 					moveText := raw[off.startByte:off.endByte]
 					// Prepare range to delete original
 					delRange := hcl.Range{Filename: filename, Start: hcl.Pos{Line: off.rng.Start.Line, Column: off.rng.Start.Column, Byte: off.startByte}, End: hcl.Pos{Line: off.rng.End.Line, Column: off.rng.End.Column, Byte: off.endByte}}
 
-					if err := runner.EmitIssueWithFix(
-						r,
-						fmt.Sprintf("These attributes must appear first in this block: %s", strings.Join(cfg.Keywords, ", ")),
-						it.rng,
-						func(fixer tflint.Fixer) error {
-							// Insert moved text before the insertBefore range
-							if err := fixer.InsertTextBefore(insertBefore, moveText); err != nil {
-								return err
+                    if err := runner.EmitIssueWithFix(
+                        r,
+                        fmt.Sprintf("These attributes must appear first in this order: %s", strings.Join(desired, ", ")),
+                        it.rng,
+                        func(fixer tflint.Fixer) error {
+                            // Insert moved text before the insertBefore range
+                            if err := fixer.InsertTextBefore(insertBefore, moveText); err != nil {
+                                return err
 							}
 							// Delete original occurrence
 							return fixer.ReplaceText(delRange, "")

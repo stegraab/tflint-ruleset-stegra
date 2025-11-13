@@ -9,7 +9,7 @@ This is a custom TFLint ruleset focused on readable, consistent Terraform code, 
 - `stegra_no_multiple_blank_lines`: Disallows multiple consecutive blank lines between content. Auto-fix removes extras and keeps a single blank line.
 - `stegra_no_leading_trailing_blank_lines`: Disallows leading blank lines and trailing blank lines at EOF. Auto-fix removes leading blanks and trims trailing blanks while preserving exactly one final newline.
 - `stegra_no_block_edge_blank_lines`: Disallows leading and trailing blank lines inside any HCL block (resource, data, module, provider, nested blocks). Auto-fix removes the interior edge blank lines.
-- `stegra_keywords_first`: Ensures configured attributes (e.g., `for_each`, `count`) appear first in resource/data blocks. Auto-fix reorders items to move non-targets after targets.
+- `stegra_keywords_first`: Ensures configured attributes appear first in the order listed in `keywords` (supports `resource`, `data`, and `module` blocks). Auto-fix reorders items.
 
 ## Requirements
 
@@ -53,7 +53,7 @@ tflint
 |stegra_no_multiple_blank_lines|Disallows multiple consecutive blank lines between content; auto-fix collapses to one|ERROR|✔||
 |stegra_no_leading_trailing_blank_lines|Disallows leading/trailing blank lines; auto-fix preserves exactly one EOF newline|ERROR|✔||
 |stegra_no_block_edge_blank_lines|Disallows leading/trailing blank lines inside any block; auto-fix removes them|ERROR|✔||
-|stegra_keywords_first|Configured attributes must appear first; auto-fix reorders items|ERROR|✔||
+|stegra_keywords_first|Configured attributes must appear first in the order listed; auto-fix reorders|ERROR|✔||
 
 ## Auto-fix Examples
 
@@ -123,7 +123,7 @@ tflint --fix
       for_each = []
     }
     ```
-  - Fixed (targets first; order among targets doesn’t matter):
+  - Fixed (targets first in configured order):
     ```hcl
     resource "aws_vpc" "a" {
       for_each = []
@@ -181,6 +181,19 @@ rule "stegra_provider_configuration_locations" {
 }
 ```
 
+- stegra_keywords_first
+  - Required option: `keywords` (ordered list of attribute names to appear first)
+  - The rule enforces the exact order listed in `keywords` when those attributes are present in a block
+  - Applies to `resource`, `data`, and `module` blocks
+  - Example:
+
+```hcl
+rule "stegra_keywords_first" {
+  enabled  = true
+  keywords = ["provider", "for_each", "count", "source"]
+}
+```
+
 ## Development
 
 - Run tests
@@ -199,13 +212,4 @@ rule "stegra_provider_configuration_locations" {
   ```
 
 Then use `.tflint.hcl` as shown in Installation and run `tflint`. The Makefile uses a local `GOCACHE` for tests to work in restricted environments.
-- stegra_keywords_first
-  - Required option: `keywords` (list of attribute names to appear first in resource/data blocks)
-  - Example:
-
-```hcl
-rule "stegra_keywords_first" {
-  enabled  = true
-  keywords = ["for_each", "count"]
-}
-```
+ 

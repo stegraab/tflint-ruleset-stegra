@@ -12,7 +12,7 @@ func Test_StegraKeywordsFirstRule(t *testing.T) {
 	cfg := `
 rule "stegra_keywords_first" {
   enabled  = true
-  keywords = ["for_each", "count"]
+  keywords = ["provider", "for_each", "count", "source"]
 }
 `
 	cases := []struct {
@@ -34,22 +34,36 @@ rule "stegra_keywords_first" {
 				".tflint.hcl": cfg,
 				"main.tf":     "resource \"aws_vpc\" \"a\" {\nname = \"a\"\nfor_each = []\n}\n",
 			},
-			Expected: helper.Issues{
-				{
-					Rule:    rule,
-					Message: "These attributes must appear first in this block: for_each, count",
-					Range:   hcl.Range{Filename: "main.tf", Start: hcl.Pos{Line: 2, Column: 1}, End: hcl.Pos{Line: 2, Column: 11}},
-				},
-			},
+            Expected: helper.Issues{
+                {
+                    Rule:    rule,
+                    Message: "These attributes must appear first in this order: provider, for_each, count, source",
+                    Range:   hcl.Range{Filename: "main.tf", Start: hcl.Pos{Line: 2, Column: 1}, End: hcl.Pos{Line: 2, Column: 11}},
+                },
+            },
 		},
-		{
-			Name: "multiple targets can be first in any order",
-			Files: map[string]string{
-				".tflint.hcl": cfg,
-				"main.tf":     "resource \"aws_vpc\" \"a\" {\ncount = 1\nfor_each = []\nname = \"a\"\n}\n",
-			},
-			Expected: helper.Issues{},
-		},
+        {
+            Name: "targets in configured order (for_each before count)",
+            Files: map[string]string{
+                ".tflint.hcl": cfg,
+                "main.tf":     "resource \"aws_vpc\" \"a\" {\nfor_each = []\ncount = 1\nname = \"a\"\n}\n",
+            },
+            Expected: helper.Issues{},
+        },
+        {
+            Name: "module: for_each before source",
+            Files: map[string]string{
+                ".tflint.hcl": cfg,
+                "mod.tf":      "module \"m\" {\nsource = \"./m\"\nfor_each = []\n}\n",
+            },
+            Expected: helper.Issues{
+                {
+                    Rule:    rule,
+                    Message: "These attributes must appear first in this order: provider, for_each, count, source",
+                    Range:   hcl.Range{Filename: "mod.tf", Start: hcl.Pos{Line: 3, Column: 1}, End: hcl.Pos{Line: 3, Column: 14}},
+                },
+            },
+        },
 		{
 			Name: "no targets present - no issue",
 			Files: map[string]string{
@@ -76,7 +90,7 @@ func Test_StegraKeywordsFirstRule_Fix_ReordersAttributes(t *testing.T) {
 	cfg := `
 rule "stegra_keywords_first" {
   enabled  = true
-  keywords = ["for_each", "count"]
+  keywords = ["provider", "for_each", "count", "source"]
 }
 `
 	files := map[string]string{
@@ -87,7 +101,7 @@ rule "stegra_keywords_first" {
 	if err := rule.Check(runner); err != nil {
 		t.Fatalf("Unexpected error occurred: %s", err)
 	}
-	helper.AssertChanges(t, map[string]string{
-		"main.tf": "resource \"aws_vpc\" \"a\" {\n  for_each = []\n  name     = \"a\"\n}\n",
-	}, runner.Changes())
+    helper.AssertChanges(t, map[string]string{
+        "main.tf": "resource \"aws_vpc\" \"a\" {\n  for_each = []\n  name     = \"a\"\n}\n",
+    }, runner.Changes())
 }
