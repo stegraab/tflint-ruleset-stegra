@@ -4,30 +4,40 @@ This is a custom TFLint ruleset focused on readable, consistent Terraform code, 
 
 - `stegra_newline_after_keywords`: Enforces a blank line after key attributes such as `count`, `for_each`, and `source` within blocks.
 - `stegra_depends_on_last`: Requires `depends_on` to be the last item (attribute or block) in resource and data blocks.
-- `stegra_no_type_in_name`: Prevents repeating type tokens from the resource/data type in the name (e.g., `aws_security_group_rule` should not be named `my_security_group_rule`).
+- `stegra_no_type_in_name`: Prevents repeating type tokens from the resource/data type in the name (e.g., `aws_security_group_rule` should not be named `my_security_group_rule`). Allows the token `main` in both type and name.
 - `stegra_provider_configuration_locations`: Allows provider configuration blocks only in specified directories.
+- `stegra_no_multiple_blank_lines`: Disallows multiple consecutive blank lines between content. Auto-fix removes extras and keeps a single blank line.
+- `stegra_no_leading_trailing_blank_lines`: Disallows leading blank lines and trailing blank lines at EOF. Auto-fix removes leading blanks and trims trailing blanks while preserving exactly one final newline.
 
 ## Requirements
 
 - TFLint v0.46+
-- Go v1.25
+- Go v1.25 (only needed for local development)
 
 ## Installation
 
-Local (development) install:
+Install via GitHub releases (recommended):
 
-1) Build and install to your TFLint plugins dir:
-
-```
-$ make install
-```
-
-2) In your Terraform project, create `.tflint.hcl`:
+1) In your Terraform project, create `.tflint.hcl`:
 
 ```hcl
 plugin "stegra" {
   enabled = true
+  source  = "github.com/stegraab/tflint-ruleset-stegra"
+  version = "0.1.0"
 }
+```
+
+2) Download the plugin binary referenced by your version:
+
+```
+tflint --init
+```
+
+3) Run TFLint:
+
+```
+tflint
 ```
 
 ## Rules
@@ -36,8 +46,54 @@ plugin "stegra" {
 | --- | --- | --- | --- | --- |
 |stegra_newline_after_keywords|Enforces a blank line after selected attributes (count, for_each, source)|ERROR|✔||
 |stegra_depends_on_last|Requires depends_on to be the last item in a resource/data block|ERROR|✔||
-|stegra_no_type_in_name|Prevents repeating type tokens in resource/data names|ERROR|✔||
+|stegra_no_type_in_name|Prevents repeating type tokens in resource/data names (allows token `main`)|ERROR|✔||
 |stegra_provider_configuration_locations|Allows provider blocks only in specified directories|ERROR|✔||
+|stegra_no_multiple_blank_lines|Disallows multiple consecutive blank lines between content; auto-fix collapses to one|ERROR|✔||
+|stegra_no_leading_trailing_blank_lines|Disallows leading/trailing blank lines; auto-fix preserves exactly one EOF newline|ERROR|✔||
+
+## Auto-fix Examples
+
+These rules support tflint's auto-fixer. Run with:
+
+```
+tflint --fix
+```
+
+- stegra_no_multiple_blank_lines
+  - Bad:
+    ```hcl
+    resource "aws_vpc" "a" {}
+
+
+    resource "aws_vpc" "b" {}
+    ```
+  - Fixed:
+    ```hcl
+    resource "aws_vpc" "a" {}
+
+    resource "aws_vpc" "b" {}
+    ```
+
+- stegra_no_leading_trailing_blank_lines
+  - Leading blank line (bad):
+    ```hcl
+
+    resource "aws_vpc" "a" {}
+    ```
+  - Fixed:
+    ```hcl
+    resource "aws_vpc" "a" {}
+    ```
+  - Trailing blanks (bad):
+    ```hcl
+    resource "aws_vpc" "a" {}
+
+
+    ```
+  - Fixed (keeps a single EOF newline):
+    ```hcl
+    resource "aws_vpc" "a" {}
+    ```
 
 ## Configuration
 
@@ -66,27 +122,21 @@ rule "stegra_provider_configuration_locations" {
 }
 ```
 
-## Building the plugin
+## Development
 
-Clone the repository locally and run the following command:
+- Run tests
+  ```
+  make test
+  ```
 
-```
-$ make
-```
+- Build the plugin
+  ```
+  make build
+  ```
 
-You can easily install the built plugin with the following:
+- Install locally into `~/.tflint.d/plugins/`
+  ```
+  make install
+  ```
 
-```
-$ make install
-```
-
-You can run the built plugin like the following:
-
-```
-$ cat << EOS > .tflint.hcl
-plugin "stegra" {
-  enabled = true
-}
-EOS
-$ tflint
-```
+Then use `.tflint.hcl` as shown in Installation and run `tflint`. The Makefile uses a local `GOCACHE` for tests to work in restricted environments.

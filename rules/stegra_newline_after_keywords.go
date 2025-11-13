@@ -1,14 +1,13 @@
 package rules
 
 import (
-	"bytes"
-	"fmt"
-	"path/filepath"
-	"strings"
+    "fmt"
+    "path/filepath"
+    "strings"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/terraform-linters/tflint-plugin-sdk/tflint"
+    "github.com/hashicorp/hcl/v2"
+    "github.com/hashicorp/hcl/v2/hclsyntax"
+    "github.com/terraform-linters/tflint-plugin-sdk/tflint"
 )
 
 // StegraNewlineAfterKeywordsRule enforces that selected attributes are followed
@@ -74,18 +73,17 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 		return err
 	}
 
-	for filename, file := range files {
-		if filepath.Ext(filename) == ".json" {
-			continue
-		}
+    for filename, file := range files {
+        if filepath.Ext(filename) != ".tf" {
+            continue
+        }
 		body, ok := file.Body.(*hclsyntax.Body)
 		if !ok {
 			continue
 		}
 
-		content := file.Bytes
-		lines := strings.Split(string(content), "\n")
-		newlineSeq := detectLineEnding(content)
+        content := file.Bytes
+        lines := strings.Split(string(content), "\n")
 
 		for _, blk := range body.Blocks {
 			for name, attr := range blk.Body.Attributes {
@@ -100,28 +98,21 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 				notBlank := false
 				if nextIdx >= len(lines) {
 					notBlank = true
-				} else if strings.TrimSpace(strings.TrimRight(lines[nextIdx], "\r")) != "" {
-					notBlank = true
-				}
-				if notBlank {
-					if err := runner.EmitIssueWithFix(
-						r,
-						fmt.Sprintf("%s must be followed by an empty newline", name),
-						ar,
-						func(fixer tflint.Fixer) error { return fixer.InsertTextAfter(ar, newlineSeq) },
-					); err != nil {
-						return err
-					}
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func detectLineEnding(content []byte) string {
-	if bytes.Contains(content, []byte("\r\n")) {
-		return "\r\n"
-	}
-	return "\n"
+                } else if strings.TrimSpace(lines[nextIdx]) != "" {
+                    notBlank = true
+                }
+                if notBlank {
+                    if err := runner.EmitIssueWithFix(
+                        r,
+                        fmt.Sprintf("%s must be followed by an empty newline", name),
+                        ar,
+                        func(fixer tflint.Fixer) error { return fixer.InsertTextAfter(ar, "\n") },
+                    ); err != nil {
+                        return err
+                    }
+                }
+            }
+        }
+    }
+    return nil
 }

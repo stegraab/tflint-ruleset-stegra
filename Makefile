@@ -1,7 +1,9 @@
 default: build
 
+GOCACHE ?= $(CURDIR)/.gocache
+
 test:
-	go test ./...
+	GOCACHE=$(GOCACHE) go test ./...
 
 build:
 	go build
