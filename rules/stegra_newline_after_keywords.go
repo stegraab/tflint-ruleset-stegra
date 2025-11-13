@@ -93,26 +93,51 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 				nameStart := attr.NameRange.Start
 				exprRange := attr.Expr.Range()
 				ar := hcl.Range{Filename: filename, Start: nameStart, End: exprRange.End}
+
+				// Skip enforcement if this attribute is the last item in the block
+				// i.e., no other attribute or child block starts after this attribute ends
+				hasFollowing := false
+				endByte := exprRange.End.Byte
+				for otherName, a2 := range blk.Body.Attributes {
+					if otherName == name {
+						continue
+					}
+					if a2.NameRange.Start.Byte > endByte {
+						hasFollowing = true
+						break
+					}
+				}
+				if !hasFollowing {
+					for _, cb := range blk.Body.Blocks {
+						if cb.TypeRange.Start.Byte > endByte {
+							hasFollowing = true
+							break
+						}
+					}
+				}
+				if !hasFollowing {
+					continue
+				}
 				endLine := ar.End.Line
 				nextIdx := endLine
 				notBlank := false
 				if nextIdx >= len(lines) {
 					notBlank = true
-                } else if strings.TrimSpace(lines[nextIdx]) != "" {
-                    notBlank = true
-                }
-                if notBlank {
-                    if err := runner.EmitIssueWithFix(
-                        r,
-                        fmt.Sprintf("%s must be followed by an empty newline", name),
-                        ar,
-                        func(fixer tflint.Fixer) error { return fixer.InsertTextAfter(ar, "\n") },
-                    ); err != nil {
-                        return err
-                    }
-                }
-            }
-        }
-    }
+				} else if strings.TrimSpace(lines[nextIdx]) != "" {
+					notBlank = true
+				}
+				if notBlank {
+					if err := runner.EmitIssueWithFix(
+						r,
+						fmt.Sprintf("%s must be followed by an empty newline", name),
+						ar,
+						func(fixer tflint.Fixer) error { return fixer.InsertTextAfter(ar, "\n") },
+					); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
     return nil
 }

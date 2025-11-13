@@ -60,8 +60,8 @@ data "aws_iam_policy_document" "p" {
 `,
 			Expected: helper.Issues{},
 		},
-		{
-			Name: "module source missing blank line",
+        {
+            Name: "module source missing blank line",
 			File: "modules.tf",
 			Content: `
 module "mod" {
@@ -86,6 +86,16 @@ module "mod" {
 			File:     "main.tf.json",
 			Content:  `{"resource": {"null_resource": {"x": {"count": 1}}}}`,
 			Expected: helper.Issues{},
+        },
+        {
+            Name: "module source is last (no issue)",
+            File: "modules_last.tf",
+            Content: `
+module "mod" {
+  source = "./module"
+}
+`,
+            Expected: helper.Issues{},
         },
         {
             Name: "config overrides keywords (only count)",

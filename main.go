@@ -18,6 +18,8 @@ func main() {
                 rules.NewStegraNoTypeInNameRule(),
                 rules.NewStegraNoMultipleBlankLinesRule(),
                 rules.NewStegraNoLeadingTrailingBlankLinesRule(),
+                rules.NewStegraNoBlockEdgeBlankLinesRule(),
+                rules.NewStegraKeywordsFirstRule(),
             },
         },
     })
