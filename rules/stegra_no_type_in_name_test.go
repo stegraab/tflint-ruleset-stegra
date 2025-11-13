@@ -73,6 +73,14 @@ data "aws_vpc" "network" {}
 `,
             Expected: helper.Issues{},
         },
+        {
+            Name: "resource allowed - 'main' in type and name",
+            File: "main.tf",
+            Content: `
+resource "aws_main_route_table_association" "main" {}
+`,
+            Expected: helper.Issues{},
+        },
     }
 
     for _, tc := range cases {

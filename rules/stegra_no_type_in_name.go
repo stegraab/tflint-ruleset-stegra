@@ -61,6 +61,10 @@ func (r *StegraNoTypeInNameRule) Check(runner tflint.Runner) error {
 				if tt == "" {
 					continue
 				}
+				// Allow "main" to be present in both type and name without flagging
+				if tt == "main" {
+					continue
+				}
 				if _, ok := nameTokens[tt]; ok {
 					repeated = append(repeated, tt)
 				}
