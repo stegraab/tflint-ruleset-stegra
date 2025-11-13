@@ -15,15 +15,34 @@ func Test_StegraDependsOnLastRule(t *testing.T) {
         Expected helper.Issues
     }{
         {
-            Name: "resource valid - depends_on last",
+            Name: "resource valid - depends_on last with blank line",
             File: "main.tf",
             Content: `
 resource "null_resource" "ex" {
-  triggers   = { a = 1 }
+  triggers = { a = 1 }
+
   depends_on = [null_resource.other]
 }
 `,
             Expected: helper.Issues{},
+        },
+        {
+            Name: "resource valid - comment above depends_on requires blank line",
+            File: "main.tf",
+            Content: `
+resource "null_resource" "ex" {
+  triggers = { a = 1 }
+  # reason
+  depends_on = [null_resource.other]
+}
+`,
+            Expected: helper.Issues{
+                {
+                    Rule:    NewStegraDependsOnLastRule(),
+                    Message: "depends_on must be preceded by a blank line",
+                    Range:   hcl.Range{Filename: "main.tf", Start: hcl.Pos{Line: 5, Column: 3}, End: hcl.Pos{Line: 5, Column: 37}},
+                },
+            },
         },
         {
             Name: "resource invalid - attribute after depends_on",
@@ -120,6 +139,43 @@ func Test_StegraDependsOnLastRule_Fix_MovesToEnd(t *testing.T) {
         t.Fatalf("Unexpected error occurred: %s", err)
     }
     helper.AssertChanges(t, map[string]string{
-        "main.tf": "resource \"null_resource\" \"ex\" {\n  triggers   = { a = 1 }\n  depends_on = [null_resource.other]\n}\n",
+        "main.tf": "resource \"null_resource\" \"ex\" {\n  triggers = { a = 1 }\n\n  depends_on = [null_resource.other]\n}\n",
+    }, runner.Changes())
+}
+
+func Test_StegraDependsOnLastRule_Fix_InsertsBlankLineWhenCommentAboveEnd(t *testing.T) {
+    rule := NewStegraDependsOnLastRule()
+    files := map[string]string{
+        "main.tf": `resource "null_resource" "ex" {
+  depends_on = [null_resource.other]
+  triggers = { a = 1 }
+  # trailing comment
+}
+`,
+    }
+    runner := helper.TestRunner(t, files)
+    if err := rule.Check(runner); err != nil {
+        t.Fatalf("Unexpected error occurred: %s", err)
+    }
+    helper.AssertChanges(t, map[string]string{
+        "main.tf": "resource \"null_resource\" \"ex\" {\n  triggers = { a = 1 }\n\n  # trailing comment\n  depends_on = [null_resource.other]\n}\n",
+    }, runner.Changes())
+}
+
+func Test_StegraDependsOnLastRule_BlankLineBeforeWhenLast(t *testing.T) {
+    rule := NewStegraDependsOnLastRule()
+    files := map[string]string{
+        "main.tf": `resource "null_resource" "ex" {
+  triggers   = { a = 1 }
+  depends_on = [null_resource.other]
+}
+`,
+    }
+    runner := helper.TestRunner(t, files)
+    if err := rule.Check(runner); err != nil {
+        t.Fatalf("Unexpected error occurred: %s", err)
+    }
+    helper.AssertChanges(t, map[string]string{
+        "main.tf": "resource \"null_resource\" \"ex\" {\n  triggers = { a = 1 }\n\n  depends_on = [null_resource.other]\n}\n",
     }, runner.Changes())
 }

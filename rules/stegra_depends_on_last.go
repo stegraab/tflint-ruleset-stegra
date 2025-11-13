@@ -2,6 +2,7 @@ package rules
 
 import (
     "path/filepath"
+    "strings"
 
     "github.com/hashicorp/hcl/v2"
     "github.com/hashicorp/hcl/v2/hclsyntax"
@@ -55,6 +56,7 @@ func (r *StegraDependsOnLastRule) Check(runner tflint.Runner) error {
         }
 
         raw := string(file.Bytes)
+        lines := strings.Split(raw, "\n")
         // Build line start byte offsets for safe slicing
         lineStarts := make([]int, 1, len(raw)/16+2)
         lineStarts[0] = 0
@@ -102,6 +104,55 @@ func (r *StegraDependsOnLastRule) Check(runner tflint.Runner) error {
             }
 
             if !(hasAttrAfter || hasBlockAfter) {
+                // Enforce a blank line before the depends_on "section": contiguous comments above depends_on belong to the section
+                hasBefore := false
+                for name, a := range attrs {
+                    if name == "depends_on" {
+                        continue
+                    }
+                    if a.NameRange.Start.Byte < depRange.Start.Byte {
+                        hasBefore = true
+                        break
+                    }
+                }
+                if !hasBefore {
+                    for _, cb := range blk.Body.Blocks {
+                        if cb.TypeRange.Start.Byte < depRange.Start.Byte {
+                            hasBefore = true
+                            break
+                        }
+                    }
+                }
+                if hasBefore {
+                    // find top of comment section above depends_on
+                    topLine := depRange.Start.Line
+                    for l := depRange.Start.Line - 1; l >= 1; l-- {
+                        s := strings.TrimSpace(lines[l-1])
+                        if strings.HasPrefix(s, "#") || strings.HasPrefix(s, "//") {
+                            topLine = l
+                            continue
+                        }
+                        break
+                    }
+                    prevLine := topLine - 1
+                    needsBlank := false
+                    if prevLine >= 1 && prevLine <= len(lines) {
+                        if strings.TrimSpace(lines[prevLine-1]) != "" {
+                            needsBlank = true
+                        }
+                    }
+                    if needsBlank {
+                        anchor := hcl.Range{Filename: filename, Start: hcl.Pos{Line: topLine, Column: 1, Byte: lineStarts[topLine-1]}, End: hcl.Pos{Line: topLine, Column: 1, Byte: lineStarts[topLine-1]}}
+                        if err := runner.EmitIssueWithFix(
+                            r,
+                            "depends_on must be preceded by a blank line",
+                            depRange,
+                            func(fixer tflint.Fixer) error { return fixer.InsertTextBefore(anchor, "\n") },
+                        ); err != nil {
+                            return err
+                        }
+                    }
+                }
                 continue
             }
 
@@ -116,6 +167,31 @@ func (r *StegraDependsOnLastRule) Check(runner tflint.Runner) error {
             delRange := hcl.Range{Filename: filename, Start: hcl.Pos{Line: depRange.Start.Line, Column: depRange.Start.Column, Byte: depStartByte}, End: hcl.Pos{Line: depRange.End.Line, Column: depRange.End.Column, Byte: depEndByte}}
             moveText := raw[depStartByte:depEndByte]
             insertBefore := hcl.Range{Filename: filename, Start: blk.CloseBraceRange.Start, End: blk.CloseBraceRange.End}
+            // Ensure exactly one blank line before the depends_on "section": if comments exist at the end, insert the blank line before the first comment
+            closeStartLine := blk.CloseBraceRange.Start.Line
+            // find trailing comment group prior to the closing brace
+            commentTop := 0
+            for l := closeStartLine - 1; l >= 1; l-- {
+                s := strings.TrimSpace(lines[l-1])
+                if strings.HasPrefix(s, "#") || strings.HasPrefix(s, "//") {
+                    commentTop = l
+                    continue
+                }
+                break
+            }
+            // decide where to ensure blank line: before commentTop if any, else before the inserted depends_on
+            ensureLine := closeStartLine
+            if commentTop > 0 {
+                ensureLine = commentTop
+            }
+            needInsertBlank := false
+            var blankAnchor hcl.Range
+            if ensureLine-1 >= 1 && ensureLine-1 <= len(lines) {
+                if strings.TrimSpace(lines[ensureLine-2]) != "" {
+                    needInsertBlank = true
+                    blankAnchor = hcl.Range{Filename: filename, Start: hcl.Pos{Line: ensureLine, Column: 1, Byte: lineStarts[ensureLine-1]}, End: hcl.Pos{Line: ensureLine, Column: 1, Byte: lineStarts[ensureLine-1]}}
+                }
+            }
 
             msg := "depends_on must be the last item in this block"
             if hasAttrAfter && !hasBlockAfter {
@@ -126,6 +202,11 @@ func (r *StegraDependsOnLastRule) Check(runner tflint.Runner) error {
                 msg,
                 depRange,
                 func(fixer tflint.Fixer) error {
+                    if needInsertBlank {
+                        if err := fixer.InsertTextBefore(blankAnchor, "\n"); err != nil {
+                            return err
+                        }
+                    }
                     if err := fixer.InsertTextBefore(insertBefore, moveText); err != nil {
                         return err
                     }
