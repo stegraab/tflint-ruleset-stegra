@@ -61,27 +61,17 @@ data "aws_iam_policy_document" "p" {
 `,
 			Expected: helper.Issues{},
 		},
-		{
-			Name: "module source missing blank line",
-			File: "modules.tf",
-			Content: `
+        {
+            Name: "module source followed by version (no blank line needed)",
+            File: "modules.tf",
+            Content: `
 module "mod" {
   source = "./module"
   version = "~> 1.0"
 }
 `,
-			Expected: helper.Issues{
-				{
-					Rule:    NewStegraNewlineAfterKeywordsRule(),
-					Message: "source must be followed by an empty newline",
-					Range: hcl.Range{
-						Filename: "modules.tf",
-						Start:    hcl.Pos{Line: 3, Column: 3},
-						End:      hcl.Pos{Line: 3, Column: 22},
-					},
-				},
-			},
-		},
+            Expected: helper.Issues{},
+        },
 		{
 			Name:     "JSON skipped",
 			File:     "main.tf.json",

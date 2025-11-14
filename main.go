@@ -20,6 +20,10 @@ func main() {
                 rules.NewStegraNoLeadingTrailingBlankLinesRule(),
                 rules.NewStegraNoBlockEdgeBlankLinesRule(),
                 rules.NewStegraKeywordsFirstRule(),
+                rules.NewStegraBlankLineBetweenBlocksRule(),
+                rules.NewStegraNoThisResourceNameRule(),
+                rules.NewStegraEmptyBlockOneLineRule(),
+                rules.NewStegraNoBlankLineBetweenRequiredProvidersRule(),
             },
         },
     })

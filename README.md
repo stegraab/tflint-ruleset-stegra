@@ -9,7 +9,11 @@ This is a custom TFLint ruleset focused on readable, consistent Terraform code, 
 - `stegra_no_multiple_blank_lines`: Disallows multiple consecutive blank lines between content. Auto-fix removes extras and keeps a single blank line.
 - `stegra_no_leading_trailing_blank_lines`: Disallows leading blank lines and trailing blank lines at EOF. Auto-fix removes leading blanks and trims trailing blanks while preserving exactly one final newline.
 - `stegra_no_block_edge_blank_lines`: Disallows leading and trailing blank lines inside any HCL block (resource, data, module, provider, nested blocks). Auto-fix removes the interior edge blank lines.
+- `stegra_blank_line_between_blocks`: Requires a blank line between any consecutive top-level `resource`/`data`/`module` blocks. If comments appear immediately before the next block, the blank line is inserted before the first comment so the comments remain attached to that block. Auto-fix inserts missing blank lines.
 - `stegra_keywords_first`: Ensures configured attributes appear first in the order listed in `keywords` (supports `resource`, `data`, and `module` blocks). Auto-fix reorders items.
+- `stegra_no_this_resource_name`: Forbids using the resource name `this`. Auto-fix renames to `main` only if there are no `<type>.this` references in the module.
+- `stegra_empty_block_one_line`: Enforces that empty blocks use single-line form `{}`. Auto-fix collapses two-line empty blocks.
+- `stegra_no_blank_line_between_required_providers`: Disallows blank lines between providers inside `terraform` → `required_providers`. Auto-fix removes only the empty lines (keeps comments).
 
 ## Requirements
 
@@ -53,7 +57,11 @@ tflint
 |stegra_no_multiple_blank_lines|Disallows multiple consecutive blank lines between content; auto-fix collapses to one|ERROR|✔||
 |stegra_no_leading_trailing_blank_lines|Disallows leading/trailing blank lines; auto-fix preserves exactly one EOF newline|ERROR|✔||
 |stegra_no_block_edge_blank_lines|Disallows leading/trailing blank lines inside any block; auto-fix removes them|ERROR|✔||
+|stegra_blank_line_between_blocks|Requires a blank line between top-level resource/data/module blocks; auto-fix inserts|ERROR|✔||
 |stegra_keywords_first|Configured attributes must appear first in the order listed; auto-fix reorders|ERROR|✔||
+|stegra_no_this_resource_name|Forbids resource name `this`; auto-fix to `main` when safe|ERROR|✔||
+|stegra_empty_block_one_line|Enforces single-line `{}` for empty blocks; auto-fix collapses|ERROR|✔||
+|stegra_no_blank_line_between_required_providers|Disallows blank lines between required_providers entries; auto-fix removes blanks|ERROR|✔||
 
 ## Auto-fix Examples
 
@@ -115,6 +123,33 @@ tflint --fix
     }
     ```
 
+- stegra_blank_line_between_blocks
+  - Bad:
+    ```hcl
+    resource "null_resource" "a" {}
+    resource "null_resource" "b" {}
+    ```
+  - Fixed:
+    ```hcl
+    resource "null_resource" "a" {}
+
+    resource "null_resource" "b" {}
+    ```
+  - With comments: blank line is inserted before the comment so comments stay attached to the next block
+    ```hcl
+    resource "null_resource" "a" {}
+    # comment about next block
+    resource "null_resource" "b" {}
+    ```
+    Fixed to:
+    ```hcl
+    resource "null_resource" "a" {}
+
+    # comment about next block
+    resource "null_resource" "b" {}
+    ```
+  - Note: Applies only to top-level blocks, not nested blocks inside a resource/module
+
 - stegra_keywords_first
   - Bad (non-target before targets):
     ```hcl
@@ -151,6 +186,58 @@ tflint --fix
     ```hcl
     module "mod" {
       source = "./module"
+    }
+    ```
+
+- stegra_no_this_resource_name
+  - Bad:
+    ```hcl
+    resource "aws_s3_bucket" "this" {}
+    ```
+  - Fixed (when no `<type>.this` references exist in the module):
+    ```hcl
+    resource "aws_s3_bucket" "main" {}
+    ```
+  - Note: If any textual reference like `aws_s3_bucket.this.*` exists, the rule reports an error but does not rename to avoid breaking references.
+
+- stegra_no_blank_line_between_required_providers
+  - Bad:
+    ```hcl
+    terraform {
+      required_providers {
+        aws = {
+          source  = "hashicorp/aws"
+          version = "6.20.0"
+        }
+        gitlab = {
+          source  = "gitlabhq/gitlab"
+          version = "18.5.0"
+        }
+
+        random = {
+          source  = "hashicorp/random"
+          version = "3.7.2"
+        }
+      }
+    }
+    ```
+  - Fixed (blank line removed, comments would be preserved):
+    ```hcl
+    terraform {
+      required_providers {
+        aws = {
+          source  = "hashicorp/aws"
+          version = "6.20.0"
+        }
+        gitlab = {
+          source  = "gitlabhq/gitlab"
+          version = "18.5.0"
+        }
+        random = {
+          source  = "hashicorp/random"
+          version = "3.7.2"
+        }
+      }
     }
     ```
 
@@ -212,4 +299,12 @@ rule "stegra_keywords_first" {
   ```
 
 Then use `.tflint.hcl` as shown in Installation and run `tflint`. The Makefile uses a local `GOCACHE` for tests to work in restricted environments.
- 
+   - Bad:
+     ```hcl
+     resource "random_uuid" "x" {
+     }
+     ```
+   - Fixed:
+     ```hcl
+     resource "random_uuid" "x" {}
+     ```

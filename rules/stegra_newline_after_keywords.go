@@ -1,9 +1,10 @@
 package rules
 
 import (
-	"fmt"
-	"path/filepath"
-	"strings"
+    "fmt"
+    "path/filepath"
+    "sort"
+    "strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -86,6 +87,22 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 		lines := strings.Split(string(content), "\n")
 
 		for _, blk := range body.Blocks {
+			// Build ordered list of items (attributes and child blocks)
+			type item struct {
+				kind  string // "attr" or "block"
+				name  string
+				start hcl.Pos
+			}
+			items := make([]item, 0, len(blk.Body.Attributes)+len(blk.Body.Blocks))
+			for nm, a := range blk.Body.Attributes {
+				items = append(items, item{kind: "attr", name: nm, start: a.NameRange.Start})
+			}
+			for _, cb := range blk.Body.Blocks {
+				items = append(items, item{kind: "block", name: cb.Type, start: cb.TypeRange.Start})
+			}
+			// sort by start byte
+			sort.Slice(items, func(i, j int) bool { return items[i].start.Byte < items[j].start.Byte })
+
 			for name, attr := range blk.Body.Attributes {
 				if _, want := target[name]; !want {
 					continue
@@ -117,6 +134,24 @@ func (r *StegraNewlineAfterKeywordsRule) Check(runner tflint.Runner) error {
 				}
 				if !hasFollowing {
 					continue
+				}
+
+				// Exception: in module blocks, allow source directly followed by version without blank line
+				if blk.Type == "module" && name == "source" {
+					// find this item index in ordered list and the immediate next item
+					idx := -1
+					for i := range items {
+						if items[i].kind == "attr" && items[i].name == name && items[i].start.Byte == nameStart.Byte {
+							idx = i
+							break
+						}
+					}
+					if idx >= 0 && idx+1 < len(items) {
+						next := items[idx+1]
+						if next.kind == "attr" && next.name == "version" {
+							continue
+						}
+					}
 				}
 				endLine := ar.End.Line
 				nextIdx := endLine
