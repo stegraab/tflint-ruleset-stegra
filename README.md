@@ -2,8 +2,8 @@
 
 This is a custom TFLint ruleset focused on readable, consistent Terraform code, targeted for Stegra Terraform projects. It currently provides:
 
-- `stegra_newline_after_keywords`: Enforces a blank line after configured attributes (e.g., `count`, `for_each`, `source`) only when another item follows in the same block.
-- `stegra_depends_on_last`: Requires `depends_on` to be the last item (attribute or block) in resource and data blocks.
+- `stegra_newline_after_keywords`: Enforces a blank line after configured attributes (e.g., `count`, `for_each`, `source`) only when another item follows in the same block. Auto-fix inserts the missing blank line.
+- `stegra_depends_on_last`: Requires `depends_on` to be the last item (attribute or block) in resource/data/module blocks and to have a blank line above when there are prior items. Auto-fix moves `depends_on` to the end and inserts the blank line as needed.
 - `stegra_no_type_in_name`: Prevents repeating type tokens from the resource/data type in the name (e.g., `aws_security_group_rule` should not be named `my_security_group_rule`). Allows the token `main` in both type and name.
 - `stegra_provider_configuration_locations`: Allows provider configuration blocks only in specified directories.
 - `stegra_no_multiple_blank_lines`: Disallows multiple consecutive blank lines between content. Auto-fix removes extras and keeps a single blank line.
@@ -11,9 +11,9 @@ This is a custom TFLint ruleset focused on readable, consistent Terraform code, 
 - `stegra_no_block_edge_blank_lines`: Disallows leading and trailing blank lines inside any HCL block (resource, data, module, provider, nested blocks). Auto-fix removes the interior edge blank lines.
 - `stegra_blank_line_between_blocks`: Requires a blank line between any consecutive top-level `resource`/`data`/`module` blocks. If comments appear immediately before the next block, the blank line is inserted before the first comment so the comments remain attached to that block. Auto-fix inserts missing blank lines.
 - `stegra_keywords_first`: Ensures configured attributes appear first in the order listed in `keywords` (supports `resource`, `data`, and `module` blocks). Auto-fix reorders items.
-- `stegra_no_this_resource_name`: Forbids using the resource name `this`. Auto-fix renames to `main` only if there are no `<type>.this` references in the module.
+- `stegra_no_this_resource_name`: Forbids using the resource name `this`. Auto-fix renames to `main` and updates `<type>.this` traversals in expressions to `<type>.main` (strings/comments are left untouched).
 - `stegra_empty_block_one_line`: Enforces that empty blocks use single-line form `{}`. Auto-fix collapses two-line empty blocks.
-- `stegra_no_blank_line_between_required_providers`: Disallows blank lines between providers inside `terraform` → `required_providers`. Auto-fix removes only the empty lines (keeps comments).
+- `stegra_no_blank_lines_in_required_providers`: Disallows blank lines anywhere inside `terraform` → `required_providers`. Auto-fix removes only the empty lines (keeps comments).
 
 ## Requirements
 
@@ -48,20 +48,20 @@ tflint
 
 ## Rules
 
-|Name|Description|Severity|Enabled|Link|
+|Name|Description|Severity|Enabled|Auto-fix|
 | --- | --- | --- | --- | --- |
-|stegra_newline_after_keywords|Enforces a blank line after selected attributes when followed by more items|ERROR|✔||
-|stegra_depends_on_last|Requires depends_on to be the last item in a resource/data block|ERROR|✔||
-|stegra_no_type_in_name|Prevents repeating type tokens in resource/data names (allows token `main`)|ERROR|✔||
-|stegra_provider_configuration_locations|Allows provider blocks only in specified directories|ERROR|✔||
-|stegra_no_multiple_blank_lines|Disallows multiple consecutive blank lines between content; auto-fix collapses to one|ERROR|✔||
-|stegra_no_leading_trailing_blank_lines|Disallows leading/trailing blank lines; auto-fix preserves exactly one EOF newline|ERROR|✔||
-|stegra_no_block_edge_blank_lines|Disallows leading/trailing blank lines inside any block; auto-fix removes them|ERROR|✔||
-|stegra_blank_line_between_blocks|Requires a blank line between top-level resource/data/module blocks; auto-fix inserts|ERROR|✔||
-|stegra_keywords_first|Configured attributes must appear first in the order listed; auto-fix reorders|ERROR|✔||
-|stegra_no_this_resource_name|Forbids resource name `this`; auto-fix to `main` when safe|ERROR|✔||
-|stegra_empty_block_one_line|Enforces single-line `{}` for empty blocks; auto-fix collapses|ERROR|✔||
-|stegra_no_blank_line_between_required_providers|Disallows blank lines between required_providers entries; auto-fix removes blanks|ERROR|✔||
+|stegra_newline_after_keywords|Enforces a blank line after selected attributes when followed by more items|ERROR|✔|Insert blank line|
+|stegra_depends_on_last|Requires depends_on last with a blank line above when needed|ERROR|✔|Move depends_on to end + insert|
+|stegra_no_type_in_name|Prevents repeating type tokens in resource/data names (allows token `main`)|ERROR|✔|N/A|
+|stegra_provider_configuration_locations|Allows provider blocks only in specified directories|ERROR|✔|N/A|
+|stegra_no_multiple_blank_lines|Disallows multiple consecutive blank lines between content|ERROR|✔|Remove extras (collapse to one)|
+|stegra_no_leading_trailing_blank_lines|Disallows leading/trailing blank lines|ERROR|✔|Remove leading/trailing; keep 1 EOF newline|
+|stegra_no_block_edge_blank_lines|Disallows leading/trailing blank lines inside any block|ERROR|✔|Remove interior edge blanks|
+|stegra_blank_line_between_blocks|Requires a blank line between top-level resource/data/module blocks|ERROR|✔|Insert blank line|
+|stegra_keywords_first|Configured attributes must appear first in the order listed|ERROR|✔|Reorder items|
+|stegra_no_this_resource_name|Forbids resource name `this`|ERROR|✔|Rename to `main` + update expression refs|
+|stegra_empty_block_one_line|Enforces single-line `{}` for empty blocks|ERROR|✔|Collapse to `{}`|
+|stegra_no_blank_lines_in_required_providers|Disallows blank lines anywhere in required_providers|ERROR|✔|Remove blank lines|
 
 ## Auto-fix Examples
 
@@ -171,7 +171,7 @@ tflint --fix
     ```hcl
     module "mod" {
       source  = "./module"
-      version = "~> 1.0"
+      name = "value"
     }
     ```
   - Fixed:
@@ -179,7 +179,7 @@ tflint --fix
     module "mod" {
       source  = "./module"
 
-      version = "~> 1.0"
+      name = "value"
     }
     ```
   - No issue when keyword is last:
@@ -188,36 +188,48 @@ tflint --fix
       source = "./module"
     }
     ```
+  - Exception in module blocks: `source` followed immediately by `version` does not require a blank line
+    ```hcl
+    module "mod" {
+      source  = "./module"
+      version = "~> 1.0"
+    }
+    ```
 
 - stegra_no_this_resource_name
   - Bad:
     ```hcl
     resource "aws_s3_bucket" "this" {}
+    resource "aws_iam_role" "r" {
+      name = aws_s3_bucket.this.id
+    }
     ```
-  - Fixed (when no `<type>.this` references exist in the module):
+  - Fixed (resource renamed and expression reference updated):
     ```hcl
     resource "aws_s3_bucket" "main" {}
+    resource "aws_iam_role" "r" {
+      name = aws_s3_bucket.main.id
+    }
     ```
-  - Note: If any textual reference like `aws_s3_bucket.this.*` exists, the rule reports an error but does not rename to avoid breaking references.
+  - Note: References are updated only in expressions (not in plain strings/comments).
 
-- stegra_no_blank_line_between_required_providers
+- stegra_no_blank_lines_in_required_providers
   - Bad:
     ```hcl
     terraform {
       required_providers {
+
         aws = {
           source  = "hashicorp/aws"
           version = "6.20.0"
         }
+
         gitlab = {
           source  = "gitlabhq/gitlab"
           version = "18.5.0"
         }
 
-        random = {
-          source  = "hashicorp/random"
-          version = "3.7.2"
-        }
+
       }
     }
     ```
@@ -233,12 +245,19 @@ tflint --fix
           source  = "gitlabhq/gitlab"
           version = "18.5.0"
         }
-        random = {
-          source  = "hashicorp/random"
-          version = "3.7.2"
-        }
       }
     }
+    ```
+
+- stegra_empty_block_one_line
+  - Bad:
+    ```hcl
+    resource "random_uuid" "x" {
+    }
+    ```
+  - Fixed:
+    ```hcl
+    resource "random_uuid" "x" {}
     ```
 
 ## Configuration
@@ -299,12 +318,3 @@ rule "stegra_keywords_first" {
   ```
 
 Then use `.tflint.hcl` as shown in Installation and run `tflint`. The Makefile uses a local `GOCACHE` for tests to work in restricted environments.
-   - Bad:
-     ```hcl
-     resource "random_uuid" "x" {
-     }
-     ```
-   - Fixed:
-     ```hcl
-     resource "random_uuid" "x" {}
-     ```

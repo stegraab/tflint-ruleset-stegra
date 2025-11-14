@@ -23,7 +23,7 @@ func main() {
                 rules.NewStegraBlankLineBetweenBlocksRule(),
                 rules.NewStegraNoThisResourceNameRule(),
                 rules.NewStegraEmptyBlockOneLineRule(),
-                rules.NewStegraNoBlankLineBetweenRequiredProvidersRule(),
+                rules.NewStegraNoBlankLinesInRequiredProvidersRule(),
             },
         },
     })
